@@ -13,6 +13,9 @@
 #import "LocationUpdateQueue.h"
 #import "Logger.h"
 
+static NSTimeInterval periodicLocationUpdateTimeInterval = 60 * 30;
+static NSTimeInterval continuousLocationUpdateTimeInterval = 60 * 5;
+
 @implementation LocationSensor
 {
     __weak LocationManager *_locationManager;
@@ -23,6 +26,10 @@
     NSTimer *_pauseLocationUpdateTimer;
     
     CLCircularRegion *_monitoringRegion;
+    
+    BOOL _periodicSwitch;
+    
+    NSDate *_timestamp;
 }
 
 - (instancetype)initWithLocationManager:(LocationManager *)locationManager andLocationProcessSetting:(struct LocationProcessSetting)locationProcessSetting
@@ -34,6 +41,8 @@
         _locationProcessSetting = locationProcessSetting;
         _location = nil;
         _monitoringRegion = nil;
+        
+        _periodicSwitch = YES;
     }
     return self;
 }
@@ -44,6 +53,8 @@
         [ _locationManager requestAlwaysAuthorization ];
         [ _locationManager startUpdatingLocation ];
     } ];
+    
+    _timestamp = [NSDate date];
 }
 
 - (void)setLocation:(CLLocation *)location
@@ -100,6 +111,42 @@
         [ self didChangeValueForKey: @"location" ];
     }
     
+    NSTimeInterval duration = [[NSDate date] timeIntervalSinceDate:_timestamp];
+    
+    NSTimeInterval comparison = _periodicSwitch ? periodicLocationUpdateTimeInterval : continuousLocationUpdateTimeInterval;
+    
+    if ( duration > comparison )
+    {
+        _periodicSwitch = !_periodicSwitch;
+        _timestamp = [NSDate date];
+        
+        if ( _periodicSwitch )
+        {
+            Log(@"Turn on periodic location updates");
+        }
+        else
+        {
+            Log(@"Turn on continuous location updates");
+        }
+    }
+    
+    if ( _periodicSwitch )
+    {
+        [ self schedulePeriodicLocationUpdates ];
+    }
+    else
+    {
+        [[BackgroundTaskManager sharedBackgroundTaskManager] endBackgroundTasks];
+        
+        [_resumeLocationUpdateTimer invalidate];
+        _resumeLocationUpdateTimer = nil;
+        [_pauseLocationUpdateTimer invalidate];
+        _pauseLocationUpdateTimer = nil;
+    }
+}
+
+- (void)schedulePeriodicLocationUpdates
+{
     [[NSOperationQueue mainQueue] addOperationWithBlock:^{
         //If the timer still valid, return it (Will not run the code below)
         if (_resumeLocationUpdateTimer == nil)

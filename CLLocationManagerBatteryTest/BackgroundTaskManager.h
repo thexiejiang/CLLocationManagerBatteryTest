@@ -15,5 +15,7 @@
 
 - (UIBackgroundTaskIdentifier)beginNewBackgroundTask;
 
+- (void)endBackgroundTasks;
+
 @end
 
